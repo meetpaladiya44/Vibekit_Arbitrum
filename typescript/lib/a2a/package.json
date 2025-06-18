@@ -8,7 +8,7 @@
   },
   "scripts": {
     "prepare": "pnpm build",
-    "build": "tsc -b",
+    "build": "npx tsc -b",
     "lint": "eslint --ext .ts,.tsx src",
     "lint:fix": "eslint --ext .ts,.tsx src --fix",
     "a2a:cli": "npx tsx src/cli.ts",

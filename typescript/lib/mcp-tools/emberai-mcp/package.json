@@ -9,7 +9,7 @@
     "ember-mcp-tool-server": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc && node -e \"const { join } = require('path'); const fs=require('fs'); const p=join(process.cwd(),'dist/index.js'); if(fs.existsSync(p)){ fs.chmodSync(p,'755'); }\"",
+    "build": "npx tsc && node -e \"const { join } = require('path'); const fs=require('fs'); const p=join(process.cwd(),'dist/index.js'); if(fs.existsSync(p)){ fs.chmodSync(p,'755'); }\"",
     "lint": "eslint --ext .ts,.tsx src",
     "lint:fix": "eslint --ext .ts,.tsx src --fix",
     "start": "tsx src/index.ts",

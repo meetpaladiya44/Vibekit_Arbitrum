@@ -1,46 +1,56 @@
 # Build stage - Context should be the typescript/ directory
-FROM node:23-slim
-
-RUN apt-get update && apt-get install -y --no-install-recommends dumb-init git ca-certificates && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+FROM node:23-slim AS builder
 
 WORKDIR /app
 
-# Enable PNPM
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+# Install dependencies
+# Note: We don't install TypeScript globally as it's already in project dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g pnpm@10.7.0
 
-# ------------------------------
-# 1. Copy lockfile & workspace config that affect dependency graph cache
-# ------------------------------
-COPY pnpm-lock.yaml* pnpm-workspace.yaml .npmrc ./
-# Copy root package.json for pnpm workspace
-COPY package.json ./
-# Copy base TS configuration so that tsconfig.base.json can be resolved
-COPY tsconfig.base.json ./
-
-# ------------------------------
-# 2. Copy all workspace package.json files (to maximise Docker cache)
-# ------------------------------
-COPY lib/ lib/
-COPY examples/lending-agent-no-wallet/package.json ./examples/lending-agent-no-wallet/
-
-# ------------------------------
-# 3. Install deps based on the copied package.json set. Skip lifecycle scripts for now
-#    because source files are not yet in the build context (they are copied in step 4).
-#    This keeps the layer cache-friendly while avoiding prepare/postinstall failures.
-# ------------------------------
-RUN pnpm install --frozen-lockfile
-
-# ------------------------------
-# 4. Now copy the rest of the source code
-# ------------------------------
+# Copy everything
+# The build context is the entire typescript/ directory to support pnpm workspaces
 COPY . .
 
+# Install all dependencies
+# This creates symlinks between workspace packages as pnpm normally does
+RUN pnpm install --frozen-lockfile
+
+# Build only the necessary workspace packages
+# The "..." suffix tells pnpm to build lending-agent-no-wallet and all its dependencies
+# This is more efficient than building the entire monorepo
 RUN pnpm --filter lending-agent-no-wallet... build
-WORKDIR /app/examples/lending-agent-no-wallet/dist
+
+# Deploy the specific package with its dependencies
+# pnpm deploy creates a production-ready bundle without symlinks, perfect for Docker
+# force-legacy-deploy is required because the root package.json has pnpm.overrides
+# which causes issues with the default deploy mode in monorepos
+RUN pnpm config set force-legacy-deploy true && \
+    pnpm --filter=lending-agent-no-wallet deploy --prod deploy-output
+
+# Production stage
+FROM node:23-slim AS production
+
+# Create a non-root user for security
+RUN apt-get update && apt-get install -y --no-install-recommends dumb-init && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -r ember && useradd -r -g ember ember
+
+# Copy the deployed application
+# The deploy-output directory contains a self-contained application with all dependencies
+# including workspace packages, properly resolved without symlinks
+COPY --from=builder /app/deploy-output /app
+
+WORKDIR /app
+
+# Change ownership to non-root user
+RUN chown -R ember:ember /app
+
+# Switch to non-root user
+USER ember
 
 # Expose port for SSE MCP server
 EXPOSE 3001
@@ -48,5 +58,6 @@ EXPOSE 3001
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the Lending agent (path is relative to the WORKDIR set above)
-CMD ["node", "index.js"]
+# Start the Lending agent
+# The deployed bundle has the same structure as the original package
+CMD ["node", "dist/index.js"]
