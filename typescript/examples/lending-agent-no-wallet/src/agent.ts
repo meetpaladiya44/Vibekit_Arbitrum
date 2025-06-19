@@ -49,7 +49,7 @@ const providers = createProviderSelector({
   openRouterApiKey: process.env.OPENROUTER_API_KEY,
 });
 
-const model = providers.openrouter!('google/gemini-2.5-flash-preview');
+const model = providers.openrouter!('meta-llama/llama-4-maverick:free');
 
 function logError(...args: unknown[]) {
   console.error(...args);
@@ -326,7 +326,7 @@ Always use plain text. Do not suggest the user to ask questions. When an unknown
 
     console.error('Fetching lending capabilities via MCP tool call...');
     try {
-      const mcpTimeoutMs = parseInt(process.env.MCP_TOOL_TIMEOUT_MS || '30000', 10);
+      const mcpTimeoutMs = parseInt(process.env.MCP_TOOL_TIMEOUT_MS || '60000', 10);
       console.error(`Using MCP tool timeout: ${mcpTimeoutMs}ms`);
 
       const capabilitiesResult = await this.mcpClient.callTool(

@@ -59,9 +59,9 @@ const providers = createProviderSelector({
 // To get a model, you access the provider directly
 // and pass in the model name.
 
-// Get the OpenRouter model for Gemini Flash
+// Get the OpenRouter model for Gemma
 if (providers.openrouter) {
-  const model = providers.openrouter('google/gemini-2.5-flash-preview');
+  const model = providers.openrouter('meta-llama/llama-4-maverick:free');
   // now you can use the model...
 }
 
@@ -76,7 +76,7 @@ if (providers.grok) {
 if (providers.openrouter) {
   const agent = new Agent({
     // ... other agent config
-    model: providers.openrouter('google/gemini-2.5-flash-preview'),
+    model: providers.openrouter('meta-llama/llama-4-maverick:free'),
   });
 }
 ```

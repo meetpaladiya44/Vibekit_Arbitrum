@@ -477,7 +477,7 @@ ${camelotContextContent}`;
 
     log('Calling OpenRouter model...');
     const { textStream } = await streamText({
-      model: openrouter('google/gemini-2.5-flash-preview'),
+      model: openrouter('meta-llama/llama-4-maverick:free'),
       system: systemPrompt,
       prompt: question,
     });

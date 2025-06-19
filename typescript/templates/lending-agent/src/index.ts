@@ -12,7 +12,7 @@ const runtimeOptions: AgentRuntimeOptions = {
   cors: true,
   basePath: '/',
   llm: {
-    model: openRouter('google/gemini-2.0-flash-001'),
+    model: openRouter('meta-llama/llama-4-maverick:free'),
   },
 };
 

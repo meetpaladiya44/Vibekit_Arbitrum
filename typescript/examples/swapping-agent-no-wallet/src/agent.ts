@@ -366,7 +366,7 @@ Use relavant conversation history to obtain required tool parameters. Present th
     try {
       this.log('Calling generateText with Vercel AI SDK...');
       const { response, text, finishReason } = await generateText({
-        model: openrouter('google/gemini-2.5-flash-preview'),
+        model: openrouter('meta-llama/llama-4-maverick:free'),
         messages: this.conversationHistory,
         tools: this.toolSet,
         maxSteps: 10,
@@ -498,7 +498,7 @@ Use relavant conversation history to obtain required tool parameters. Present th
     }
 
     try {
-      const mcpTimeoutMs = parseInt(process.env.MCP_TOOL_TIMEOUT_MS || '30000', 10);
+      const mcpTimeoutMs = parseInt(process.env.MCP_TOOL_TIMEOUT_MS || '60000', 10);
       this.log(`Using MCP tool timeout: ${mcpTimeoutMs}ms`);
 
       const capabilitiesResult = await this.mcpClient.callTool(

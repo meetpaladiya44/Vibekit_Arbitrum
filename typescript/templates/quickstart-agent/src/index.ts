@@ -40,7 +40,7 @@ const agent = Agent.create(agentConfig, {
   cors: process.env.ENABLE_CORS !== 'false',
   basePath: process.env.BASE_PATH || undefined,
   llm: {
-    model: openrouter(process.env.LLM_MODEL || 'google/gemini-2.5-flash-preview'),
+    model: openrouter(process.env.LLM_MODEL || 'meta-llama/llama-4-maverick:free'),
   },
 });
 

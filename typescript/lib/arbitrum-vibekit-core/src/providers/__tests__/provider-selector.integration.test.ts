@@ -67,7 +67,7 @@ describe.skipIf(!hasAnyKey)('Provider Selector Integration Tests', () => {
 
   it.skipIf(!hasOpenRouter)('should create a valid OpenRouter model instance', () => {
     const selector = createProviderSelector({ openRouterApiKey: API_KEYS.openRouterApiKey! });
-    const model = selector.openrouter!('openai/gpt-4.1-nano');
+    const model = selector.openrouter!('meta-llama/llama-4-maverick:free');
 
     // Verify it's a valid LanguageModelV1 instance
     expect(model).toBeDefined();
@@ -76,7 +76,7 @@ describe.skipIf(!hasAnyKey)('Provider Selector Integration Tests', () => {
     expect(model).toHaveProperty('doGenerate');
 
     // Check specific properties
-    expect(model.modelId).toBe('openai/gpt-4.1-nano');
+    expect(model.modelId).toBe('meta-llama/llama-4-maverick:free');
     expect(model.provider).toBe('openrouter.chat');
   });
 
@@ -156,7 +156,7 @@ describe.skipIf(!hasAnyKey)('Provider Selector Integration Tests', () => {
     'should successfully call OpenRouter API',
     async () => {
       const selector = createProviderSelector({ openRouterApiKey: API_KEYS.openRouterApiKey! });
-      const model = selector.openrouter!('openai/gpt-4.1-nano');
+      const model = selector.openrouter!('meta-llama/llama-4-maverick:free');
 
       // Make a minimal API call
       const result = await model.doGenerate({
