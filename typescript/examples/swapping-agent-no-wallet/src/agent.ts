@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import {
   generateText,
   tool,
@@ -15,8 +14,9 @@ import {
   type CoreUserMessage,
   type CoreAssistantMessage,
   type StepResult,
+  type LanguageModelV1,
 } from 'ai';
-import { parseMcpToolResponsePayload } from 'arbitrum-vibekit-core';
+import { parseMcpToolResponsePayload, createProviderSelector } from 'arbitrum-vibekit-core';
 import { type Address } from 'viem';
 import { z } from 'zod';
 import type { HandlerContext } from './agentToolHandlers.js';
@@ -32,9 +32,44 @@ import {
   SwapTokensSchema,
 } from 'ember-schemas';
 
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
+const providers = createProviderSelector({
+  openRouterApiKey: process.env.OPENROUTER_API_KEY,
 });
+
+console.error(
+  '🟡 [SWAPPING] OPENROUTER_API_KEY check:',
+  process.env.OPENROUTER_API_KEY?.slice(0, 10)
+);
+
+// Try multiple model fallbacks in case the free version has issues
+const modelOptions = [
+  'meta-llama/llama-4-maverick:free',
+  'meta-llama/llama-4-scout:free',
+  'meta-llama/llama-3.3-70b-instruct:free', // Fallback option 1
+  'meta-llama/llama-3.1-8b-instruct:free', // Fallback option 2
+];
+
+let model: LanguageModelV1 | null = null;
+let selectedModel = '';
+
+for (const modelName of modelOptions) {
+  try {
+    console.error(`🟡 [SWAPPING] Attempting to create model: ${modelName}`);
+    if (providers.openrouter) {
+      model = providers.openrouter(modelName);
+      selectedModel = modelName;
+      console.error(`✅ [SWAPPING] Successfully created model: ${modelName}`);
+      break;
+    }
+  } catch (error) {
+    console.error(`❌ [SWAPPING] Failed to create model ${modelName}:`, error);
+    continue;
+  }
+}
+
+if (!model) {
+  throw new Error('Failed to create any OpenRouter model. Please check your OPENROUTER_API_KEY.');
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,12 +146,23 @@ export class Agent {
   private camelotContextContent: string = '';
 
   constructor(quicknodeSubdomain: string, quicknodeApiKey: string) {
+    console.error('🟡 [SWAPPING] Constructor called with params:', {
+      quicknodeSubdomain,
+      quicknodeApiKey,
+    });
     this.quicknodeSubdomain = quicknodeSubdomain;
     this.quicknodeApiKey = quicknodeApiKey;
 
-    if (!process.env.OPENROUTER_API_KEY) {
+    if (!providers.openrouter) {
+      console.error('❌ [SWAPPING] OPENROUTER_API_KEY not set!');
       throw new Error('OPENROUTER_API_KEY not set!');
     }
+
+    console.error(
+      '🟡 [SWAPPING] OPENROUTER_API_KEY present:',
+      process.env.OPENROUTER_API_KEY?.slice(0, 10)
+    );
+    console.error(`✅ [SWAPPING] Using model: ${selectedModel}`);
   }
 
   async log(...args: unknown[]) {
@@ -142,6 +188,34 @@ export class Agent {
   }
 
   async init() {
+    // Test the model with a simple call to validate API key and model access
+    console.error('🟡 [SWAPPING] Testing model with simple API call...');
+    try {
+      const testResult = await generateText({
+        model: model!,
+        prompt: 'Say hello',
+        maxTokens: 10,
+      });
+      console.error('✅ [SWAPPING] Model test successful:', testResult.text);
+    } catch (testError) {
+      console.error('❌ [SWAPPING] Model test failed:', {
+        name: testError instanceof Error ? testError.name : 'Unknown',
+        message: testError instanceof Error ? testError.message : String(testError),
+      });
+
+      // Try to provide more specific error information
+      if (testError instanceof Error && testError.message.includes('Not Found')) {
+        console.error('❌ [SWAPPING] API key appears to be invalid or model not accessible');
+        console.error('❌ [SWAPPING] Please check:');
+        console.error('❌ [SWAPPING] 1. OPENROUTER_API_KEY is set correctly');
+        console.error('❌ [SWAPPING] 2. API key has access to', selectedModel);
+        console.error('❌ [SWAPPING] 3. Account has sufficient credits/quota');
+      }
+
+      // Don't throw here, just warn - we'll handle the error when the model is actually used
+      console.error('⚠️ [SWAPPING] Warning: Model test failed, but continuing initialization...');
+    }
+
     this.conversationHistory = [
       {
         role: 'system',
@@ -339,8 +413,9 @@ Use relavant conversation history to obtain required tool parameters. Present th
   }
 
   async start() {
+    console.error('🟡 [SWAPPING] Starting agent initialization...');
     await this.init();
-    this.log('Agent started.');
+    console.error('✅ [SWAPPING] Agent started successfully.');
   }
 
   async stop() {
@@ -356,25 +431,39 @@ Use relavant conversation history to obtain required tool parameters. Present th
   }
 
   async processUserInput(userInput: string, userAddress: Address): Promise<Task> {
+    console.error('🟡 [SWAPPING] processUserInput called with:', { userInput, userAddress });
+
     if (!this.toolSet) {
+      console.error('❌ [SWAPPING] Agent not initialized - toolSet is null');
       throw new Error('Agent not initialized. Call start() first.');
     }
+    console.error('✅ [SWAPPING] ToolSet available:', Object.keys(this.toolSet));
+
     this.userAddress = userAddress;
     const userMessage: CoreUserMessage = { role: 'user', content: userInput };
     this.conversationHistory.push(userMessage);
+    console.error('🟡 [SWAPPING] Added user message to conversation history');
 
     try {
-      this.log('Calling generateText with Vercel AI SDK...');
+      console.error('🟡 [SWAPPING] Starting generateText with Vercel AI SDK...');
+      console.error('🟡 [SWAPPING] About to call generateText with params:', {
+        model: selectedModel,
+        messagesCount: this.conversationHistory.length,
+        toolsCount: Object.keys(this.toolSet).length,
+        maxSteps: 10,
+        apiKeyPresent: !!process.env.OPENROUTER_API_KEY,
+      });
+
       const { response, text, finishReason } = await generateText({
-        model: openrouter('meta-llama/llama-4-maverick:free'),
+        model: model!,
         messages: this.conversationHistory,
         tools: this.toolSet,
         maxSteps: 10,
         onStepFinish: async (stepResult: StepResult<typeof this.toolSet>) => {
-          this.log(`Step finished. Reason: ${stepResult.finishReason}`);
+          console.error(`🟡 [SWAPPING] Step finished. Reason: ${stepResult.finishReason}`);
         },
       });
-      this.log(`generateText finished. Reason: ${finishReason}`);
+      console.error(`✅ [SWAPPING] generateText finished. Reason: ${finishReason}`);
 
       response.messages.forEach((msg, index) => {
         if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -480,6 +569,26 @@ Use relavant conversation history to obtain required tool parameters. Present th
         'Agent processing failed: No tool result task processed and no final text response available.'
       );
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorName = error instanceof Error ? error.name : 'Unknown error type';
+
+      console.error('❌ [SWAPPING] Error calling Vercel AI SDK generateText:', {
+        name: errorName,
+        message: errorMessage,
+        userInput: userInput,
+        userAddress: this.userAddress,
+      });
+
+      // If it's an AI_APICallError, log model info
+      if (errorName === 'AI_APICallError') {
+        console.error('❌ [SWAPPING] AI API call failed. Model info:', {
+          model: selectedModel || 'meta-llama/llama-4-maverick:free',
+          provider: 'OpenRouter',
+          apiKeyPresent: !!process.env.OPENROUTER_API_KEY,
+          errorDetails: errorMessage,
+        });
+      }
+
       const errorLog = `Error calling Vercel AI SDK generateText: ${error}`;
       logError(errorLog);
       const errorAssistantMessage: CoreAssistantMessage = {

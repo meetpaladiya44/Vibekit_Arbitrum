@@ -1,0 +1,76 @@
+services:
+  lending-agent-no-wallet:
+    build:
+      context: ./
+      dockerfile: examples/lending-agent-no-wallet/Dockerfile.dev
+      target: development # Stop at development stage
+    container_name: vibekit-lending-agent-no-wallet-dev
+    env_file:
+      - path: .env
+        required: true
+      - path: examples/lending-agent-no-wallet/.env
+        required: false
+    ports:
+      - 3001:3001
+    volumes:
+      # Mount source code for live changes
+      - ./examples/lending-agent-no-wallet/src:/app/examples/lending-agent-no-wallet/src
+      - ./lib:/app/lib
+      - /app/node_modules # Prevent overwriting node_modules
+    restart: unless-stopped
+    command: ['pnpm', '--filter', 'lending-agent-no-wallet', 'dev']
+
+  swapping-agent-no-wallet:
+    build:
+      context: ./
+      dockerfile: examples/swapping-agent-no-wallet/Dockerfile.dev
+      target: development # Stop at development stage
+    container_name: vibekit-swapping-agent-no-wallet-dev
+    env_file:
+      - path: .env
+        required: true
+      - path: examples/swapping-agent-no-wallet/.env
+        required: false
+    ports:
+      - 3005:3005
+    volumes:
+      # Mount source code for live changes
+      - ./examples/swapping-agent-no-wallet/src:/app/examples/swapping-agent-no-wallet/src
+      - ./lib:/app/lib
+      - /app/node_modules # Prevent overwriting node_modules
+    restart: unless-stopped
+    command: ['pnpm', '--filter', 'swapping-agent-no-wallet', 'dev']
+
+  web:
+    container_name: vibekit-web-app
+    build:
+      context: clients/web/
+      dockerfile: Dockerfile.prod
+    env_file:
+      - path: .env
+        required: true
+      - path: clients/web/.env
+        required: false
+    environment:
+      POSTGRES_URL: postgresql://chatbot:changeme@db:5432/chatbot
+      AUTH_URL: http://localhost:3000/api/auth
+      PORT: 3000
+    ports:
+      - 3000:3000
+    depends_on:
+      - db
+
+  db:
+    image: postgres:17
+    container_name: vibekit-db
+    environment:
+      POSTGRES_USER: chatbot
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: chatbot
+    env_file:
+      - .env
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:

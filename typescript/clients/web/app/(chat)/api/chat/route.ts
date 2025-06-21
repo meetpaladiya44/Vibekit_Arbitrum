@@ -43,6 +43,16 @@ export async function POST(request: Request) {
     console.log('🔍 [ROUTE] Request parsed - messages:', messages?.length);
     console.log('🔍 [ROUTE] selectedChatModel:', selectedChatModel);
     console.log('🔍 [ROUTE] context:', context);
+    console.log('🔍 [ROUTE] Environment variables check:');
+    console.log('🔍 [ROUTE] OPENROUTER_API_KEY exists:', !!process.env.OPENROUTER_API_KEY);
+    console.log(
+      '🔍 [ROUTE] OPENROUTER_API_KEY length:',
+      process.env.OPENROUTER_API_KEY?.length || 0
+    );
+    console.log(
+      '🔍 [ROUTE] OPENROUTER_API_KEY prefix:',
+      process.env.OPENROUTER_API_KEY?.substring(0, 10) || 'N/A'
+    );
 
     console.log('🔍 [ROUTE] id:', id);
 
@@ -151,9 +161,16 @@ export async function POST(request: Request) {
       dynamicTools = await getDynamicTools();
       console.log('✅ [ROUTE] Dynamic tools loaded:', Object.keys(dynamicTools));
       console.log('🔍 [ROUTE] Dynamic tools details:', dynamicTools);
+
+      if (Object.keys(dynamicTools).length === 0) {
+        console.warn(
+          '⚠️ [ROUTE] No dynamic tools were loaded. This may indicate connection issues with the agent servers.'
+        );
+      }
     } catch (error) {
       console.error('❌ [ROUTE] Error loading dynamic tools:', error);
-      throw error;
+      console.error('❌ [ROUTE] Will proceed without dynamic tools');
+      dynamicTools = {};
     }
 
     console.log('🔍 [ROUTE] Creating data stream response...');
@@ -169,8 +186,16 @@ export async function POST(request: Request) {
 
         try {
           console.log('🔍 [ROUTE] Getting language model for:', selectedChatModel);
+          console.log('🔍 [ROUTE] OpenRouter provider type:', typeof openRouterProvider);
+          console.log('🔍 [ROUTE] OpenRouter provider methods:', Object.keys(openRouterProvider));
+
           const model = openRouterProvider.languageModel(selectedChatModel);
           console.log('✅ [ROUTE] Language model retrieved successfully');
+          console.log('🔍 [ROUTE] Model details:', {
+            modelType: typeof model,
+            modelId: model?.modelId || 'undefined',
+            provider: model?.provider || 'undefined',
+          });
 
           console.log('🔍 [ROUTE] Generating system prompt...');
           const systemPromptText = systemPrompt({
@@ -253,6 +278,11 @@ export async function POST(request: Request) {
           console.log('✅ [ROUTE] Result merged into data stream');
         } catch (streamError) {
           console.error('❌ [ROUTE] Error in stream execution:', streamError);
+          console.error('❌ [ROUTE] Stream error details:', {
+            name: streamError instanceof Error ? streamError.name : 'Unknown',
+            message: streamError instanceof Error ? streamError.message : String(streamError),
+            stack: streamError instanceof Error ? streamError.stack : undefined,
+          });
           throw streamError;
         }
       },
@@ -263,6 +293,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('❌ [ROUTE] Main POST error:', error);
+    console.error('❌ [ROUTE] Main error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     const JSONerror = JSON.stringify(error, null, 2);
     return new Response(`An error occurred while processing your request! ${JSONerror}`, {
       status: 500,

@@ -1,0 +1,30 @@
+# Development stage - Context should be the typescript/ directory
+FROM node:20-slim AS development
+
+WORKDIR /app
+
+# Install dependencies and development tools
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g pnpm@10.7.0
+
+# Copy package files first for better caching
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY lib/*/package.json lib/*/
+COPY examples/swapping-agent-no-wallet/package.json examples/swapping-agent-no-wallet/
+
+# Install all dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy all source code
+COPY . .
+
+# Build the workspace dependencies
+RUN pnpm --filter swapping-agent-no-wallet... build
+
+# Expose port for SSE MCP server
+EXPOSE 3005
+
+# Development command with watch mode
+CMD ["pnpm", "--filter", "swapping-agent-no-wallet", "dev"] 

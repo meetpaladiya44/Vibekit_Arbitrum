@@ -49,7 +49,37 @@ const providers = createProviderSelector({
   openRouterApiKey: process.env.OPENROUTER_API_KEY,
 });
 
-const model = providers.openrouter!('meta-llama/llama-4-maverick:free');
+console.log('OPENROUTER_API_KEY lending agent:', process.env.OPENROUTER_API_KEY?.slice(0, 10));
+
+// Try multiple model fallbacks in case the free version has issues
+const modelOptions = [
+  'meta-llama/llama-4-maverick:free',
+  'meta-llama/llama-4-scout:free',
+  'meta-llama/llama-3.3-70b-instruct:free', // Fallback option 1
+  'meta-llama/llama-3.1-8b-instruct:free', // Fallback option 2
+];
+
+let model: LanguageModelV1 | null = null;
+let selectedModel = '';
+
+for (const modelName of modelOptions) {
+  try {
+    console.error(`Attempting to create model: ${modelName}`);
+    if (providers.openrouter) {
+      model = providers.openrouter(modelName);
+      selectedModel = modelName;
+      console.error(`✅ Successfully created model: ${modelName}`);
+      break;
+    }
+  } catch (error) {
+    console.error(`❌ Failed to create model ${modelName}:`, error);
+    continue;
+  }
+}
+
+if (!model) {
+  throw new Error('Failed to create any OpenRouter model. Please check your OPENROUTER_API_KEY.');
+}
 
 function logError(...args: unknown[]) {
   console.error(...args);
@@ -122,17 +152,59 @@ export class Agent {
   private model: LanguageModelV1;
 
   constructor(quicknodeSubdomain: string, quicknodeApiKey: string) {
+    console.error('🔵 [LENDING] Constructor called with params:', {
+      quicknodeSubdomain,
+      quicknodeApiKey,
+    });
     this.quicknodeSubdomain = quicknodeSubdomain;
     this.quicknodeApiKey = quicknodeApiKey;
 
     if (!providers.openrouter) {
+      console.error('❌ [LENDING] OPENROUTER_API_KEY not set!');
       throw new Error('OPENROUTER_API_KEY not set!');
     }
-    this.model = model;
+
+    console.error(
+      '🔵 [LENDING] OPENROUTER_API_KEY present:',
+      process.env.OPENROUTER_API_KEY?.slice(0, 10)
+    );
+
+    // Initialize model during construction
+    this.model = model!; // We know model is not null from the check above
+    console.error(`✅ [LENDING] Using model: ${selectedModel}`);
   }
 
   async init(): Promise<void> {
     this.setupMCPClient();
+
+    // Test the model with a simple call to validate API key and model access
+    console.error('Testing model with simple API call...');
+    try {
+      const testResult = await generateText({
+        model: this.model,
+        prompt: 'Say hello',
+        maxTokens: 10,
+      });
+      console.error('✅ Model test successful:', testResult.text);
+    } catch (testError) {
+      console.error('❌ Model test failed:', {
+        name: testError instanceof Error ? testError.name : 'Unknown',
+        message: testError instanceof Error ? testError.message : String(testError),
+        stack: testError instanceof Error ? testError.stack : undefined,
+      });
+
+      // Try to provide more specific error information
+      if (testError instanceof Error && testError.message.includes('Not Found')) {
+        console.error('❌ API key appears to be invalid or model not accessible');
+        console.error('❌ Please check:');
+        console.error('❌ 1. OPENROUTER_API_KEY is set correctly');
+        console.error('❌ 2. API key has access to meta-llama/llama-4-maverick:free');
+        console.error('❌ 3. Account has sufficient credits/quota');
+      }
+
+      // Don't throw here, just warn - we'll handle the error when the model is actually used
+      console.error('⚠️ Warning: Model test failed, but continuing initialization...');
+    }
 
     console.error('Initializing MCP client transport...');
     try {
@@ -224,11 +296,16 @@ export class Agent {
         description: 'Get a summary of your current lending and borrowing positions.',
         parameters: GetUserPositionsSchema,
         execute: async args => {
-          console.error('Vercel AI SDK calling handler: getUserPositions', args);
+          console.error('🔵 [LENDING] Vercel AI SDK calling handler: getUserPositions', args);
           try {
-            return await handleGetUserPositions(args, this.getHandlerContext());
+            const result = await handleGetUserPositions(args, this.getHandlerContext());
+            console.error('✅ [LENDING] getUserPositions completed successfully');
+            return result;
           } catch (error: unknown) {
             const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(
+              `❌ [LENDING] Error during getUserPositions via toolSet: ${errorMessage}`
+            );
             logError(`Error during getUserPositions via toolSet: ${errorMessage}`);
             throw error;
           }
@@ -309,8 +386,9 @@ Always use plain text. Do not suggest the user to ask questions. When an unknown
   }
 
   async start() {
+    console.error('🔵 [LENDING] Starting agent initialization...');
     await this.init();
-    console.error('Agent started.');
+    console.error('✅ [LENDING] Agent started successfully.');
   }
 
   async stop(): Promise<void> {
@@ -518,16 +596,52 @@ Always use plain text. Do not suggest the user to ask questions. When an unknown
   }
 
   async processUserInput(userMessageText: string, userAddress: string): Promise<Task> {
+    console.error('🔵 [LENDING] processUserInput called with:', { userMessageText, userAddress });
+
     if (!this.toolSet) {
+      console.error('❌ [LENDING] Agent not initialized - toolSet is null');
       throw new Error('Agent not initialized. Call init() first.');
     }
+    console.error('✅ [LENDING] ToolSet available:', Object.keys(this.toolSet));
+
     this.userAddress = userAddress;
 
     const userMessage: CoreUserMessage = { role: 'user', content: userMessageText };
     this.conversationHistory.push(userMessage);
+    console.error('🔵 [LENDING] Added user message to conversation history');
 
     try {
-      console.error('Calling generateText with Vercel AI SDK...');
+      console.error('🔵 [LENDING] Starting generateText with Vercel AI SDK...');
+
+      // Additional debug info
+      console.error('🔵 [LENDING] Model being used:', this.model ? typeof this.model : 'undefined');
+      console.error('🔵 [LENDING] Model details before generateText call:', {
+        modelType: typeof this.model,
+        modelId: this.model?.modelId || 'undefined',
+        provider: this.model?.provider || 'undefined',
+        hasModel: !!this.model,
+      });
+      console.error('🔵 [LENDING] OpenRouter API Key check:', {
+        hasKey: !!process.env.OPENROUTER_API_KEY,
+        keyLength: process.env.OPENROUTER_API_KEY?.length || 0,
+        keyPrefix: process.env.OPENROUTER_API_KEY?.substring(0, 10) || 'N/A',
+      });
+      console.error(
+        '🔵 [LENDING] System message length:',
+        this.conversationHistory.find(m => m.role === 'system')?.content?.length || 0
+      );
+      console.error('🔵 [LENDING] Number of tools available:', Object.keys(this.toolSet).length);
+      console.error('🔵 [LENDING] Conversation history length:', this.conversationHistory.length);
+      console.error('🔵 [LENDING] User address:', this.userAddress);
+
+      console.error('🔵 [LENDING] About to call generateText with params:', {
+        systemMessageLength: this.conversationHistory.find(m => m.role === 'system')?.content
+          ?.length,
+        messagesCount: this.conversationHistory.filter(m => m.role !== 'system').length,
+        toolsCount: Object.keys(this.toolSet).length,
+        maxSteps: 5,
+      });
+
       const { text, toolResults, finishReason, response } = await generateText({
         model: this.model,
         system: this.conversationHistory.find(m => m.role === 'system')?.content as string,
@@ -540,11 +654,11 @@ Always use plain text. Do not suggest the user to ask questions. When an unknown
         },
         maxSteps: 5,
         onStepFinish: async (stepResult: StepResult<typeof this.toolSet>) => {
-          console.error(`Step finished. Reason: ${stepResult.finishReason}`);
+          console.error(`🔵 [LENDING] Step finished. Reason: ${stepResult.finishReason}`);
         },
       });
-      console.error(`generateText finished. Reason: ${finishReason}`);
-      console.error(`LLM response text: ${text}`);
+      console.error(`✅ [LENDING] generateText finished. Reason: ${finishReason}`);
+      console.error(`🔵 [LENDING] LLM response text: ${text?.substring(0, 200)}...`);
 
       // Add messages from the response to conversation history
       if (response.messages && Array.isArray(response.messages)) {
@@ -590,11 +704,32 @@ Always use plain text. Do not suggest the user to ask questions. When an unknown
         },
       };
     } catch (error) {
-      const errorLog = `Error calling Vercel AI SDK generateText: ${error}`;
-      logError(errorLog);
+      // Enhanced error logging
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : 'No stack trace available';
+      const errorName = error instanceof Error ? error.name : 'Unknown error type';
+
+      console.error('❌ [LENDING] Error calling Vercel AI SDK generateText:', {
+        name: errorName,
+        message: errorMessage,
+        userInput: userMessageText,
+        userAddress: this.userAddress,
+      });
+
+      // If it's an AI_APICallError, log model info
+      if (errorName === 'AI_APICallError') {
+        console.error('❌ [LENDING] AI API call failed. Model info:', {
+          model: this.model ? typeof this.model : 'undefined',
+          provider: 'OpenRouter',
+          modelId: selectedModel || 'meta-llama/llama-4-maverick:free',
+          apiKeyPresent: !!process.env.OPENROUTER_API_KEY,
+          errorDetails: errorMessage,
+        });
+      }
+
       const errorAssistantMessage: CoreAssistantMessage = {
         role: 'assistant',
-        content: `An error occurred: ${String(error)}`,
+        content: `An error occurred: ${errorMessage}`,
       };
       this.conversationHistory.push(errorAssistantMessage);
       return {
@@ -603,7 +738,7 @@ Always use plain text. Do not suggest the user to ask questions. When an unknown
           state: 'failed',
           message: {
             role: 'agent',
-            parts: [{ type: 'text', text: `An error occurred: ${String(error)}` }],
+            parts: [{ type: 'text', text: `An error occurred: ${errorMessage}` }],
           },
         },
       };

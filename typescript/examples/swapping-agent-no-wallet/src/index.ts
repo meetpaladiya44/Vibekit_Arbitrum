@@ -31,14 +31,18 @@ const server = new McpServer({
 let agent: Agent;
 
 const initializeAgent = async (): Promise<void> => {
+  console.error('🟡 [SERVER] Starting swapping agent initialization...');
   const quicknodeSubdomain = process.env.QUICKNODE_SUBDOMAIN;
   const apiKey = process.env.QUICKNODE_API_KEY;
   if (!quicknodeSubdomain || !apiKey) {
     throw new Error('QUICKNODE_SUBDOMAIN and QUICKNODE_API_KEY must be set in the .env file.');
   }
 
+  console.error('🟡 [SERVER] Creating new Agent instance...');
   agent = new Agent(quicknodeSubdomain, apiKey);
+  console.error('🟡 [SERVER] Calling agent.init()...');
   await agent.init();
+  console.error('🟡 [SERVER] Agent initialization completed successfully!');
 };
 
 const agentToolName = 'askSwapAgent';
@@ -50,14 +54,16 @@ server.tool(
   agentToolDescription,
   SwapAgentSchema.shape,
   async (args: SwapAgentArgs) => {
+    console.error('🟡 [SERVER] Tool execution started with args:', args);
     const { instruction, userAddress } = args;
     if (!isAddress(userAddress)) {
       throw new Error('Invalid user address provided.');
     }
     try {
+      console.error('🟡 [SERVER] Calling agent.processUserInput...');
       const taskResponse = await agent.processUserInput(instruction, userAddress);
 
-      console.error('[server.tool] result', taskResponse);
+      console.error('🟡 [SERVER] result', taskResponse);
 
       return {
         content: [{ type: 'text', text: JSON.stringify(taskResponse) }],
