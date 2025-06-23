@@ -514,6 +514,9 @@ importers:
       tsx:
         specifier: ^4.6.2
         version: 4.20.1
+      typescript:
+        specifier: ^5.8.3
+        version: 5.8.3
 
   examples/pendle-agent:
     dependencies:
@@ -889,9 +892,6 @@ importers:
 
   lib/ember-schemas:
     dependencies:
-      typescript:
-        specifier: ^5.4.2
-        version: 5.8.3
       zod:
         specifier: ^3.24.3
         version: 3.25.61
@@ -902,6 +902,9 @@ importers:
       prettier:
         specifier: ^3.5.3
         version: 3.5.3
+      typescript:
+        specifier: ^5.8.3
+        version: 5.8.3
 
   lib/mcp-tools/allora-mcp-server:
     dependencies:
@@ -1011,7 +1014,7 @@ importers:
         specifier: ^3.5.3
         version: 3.5.3
       typescript:
-        specifier: ^5.4.2
+        specifier: ^5.8.3
         version: 5.8.3
 
   templates/allora-price-prediction-agent:
@@ -13378,7 +13381,6 @@ snapshots:
 
   ember-schemas@file:lib/ember-schemas:
     dependencies:
-      typescript: 5.8.3
       zod: 3.25.61
 
   emoji-regex@8.0.0: {}

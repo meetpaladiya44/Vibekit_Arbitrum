@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc --build && cpx \"encyclopedia/**/*\" dist/encyclopedia",
+    "build": "npx tsc --build && cpx \"encyclopedia/**/*\" dist/encyclopedia",
     "lint": "eslint --ext .ts,.tsx src",
     "lint:fix": "eslint --ext .ts,.tsx src --fix",
     "dev": "tsx src/index.ts",
@@ -48,6 +48,7 @@
     "mocha-suppress-logs": "^0.3.1",
     "prettier": "^3.5.3",
     "test-utils": "workspace:*",
-    "tsx": "^4.6.2"
+    "tsx": "^4.6.2",
+    "typescript": "^5.8.3"
   }
 }

@@ -7,10 +7,11 @@ import {
   type CoreAssistantMessage,
   type StepResult,
   type ToolResultPart,
+  type LanguageModelV1,
 } from 'ai';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { createProviderSelector } from 'arbitrum-vibekit-core';
 import type { Task } from 'a2a-samples-js';
 import { createRequire } from 'module';
 import * as chains from 'viem/chains';
@@ -32,9 +33,44 @@ import {
   type HandlerContext,
 } from './agentToolHandlers.js';
 
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
+const providers = createProviderSelector({
+  openRouterApiKey: process.env.OPENROUTER_API_KEY,
 });
+
+console.error(
+  '🟢 [LIQUIDITY] OPENROUTER_API_KEY check:',
+  process.env.OPENROUTER_API_KEY?.slice(0, 10)
+);
+
+// Try multiple model fallbacks in case the free version has issues
+const modelOptions = [
+  'meta-llama/llama-4-maverick:free',
+  'meta-llama/llama-4-scout:free',
+  'meta-llama/llama-3.3-70b-instruct:free', // Fallback option 1
+  'meta-llama/llama-3.1-8b-instruct:free', // Fallback option 2
+];
+
+let model: LanguageModelV1 | null = null;
+let selectedModel = '';
+
+for (const modelName of modelOptions) {
+  try {
+    console.error(`🟢 [LIQUIDITY] Attempting to create model: ${modelName}`);
+    if (providers.openrouter) {
+      model = providers.openrouter(modelName);
+      selectedModel = modelName;
+      console.error(`✅ [LIQUIDITY] Successfully created model: ${modelName}`);
+      break;
+    }
+  } catch (error) {
+    console.error(`❌ [LIQUIDITY] Failed to create model ${modelName}:`, error);
+    continue;
+  }
+}
+
+if (!model) {
+  throw new Error('Failed to create any OpenRouter model. Please check your OPENROUTER_API_KEY.');
+}
 
 function logError(...args: unknown[]) {
   console.error(...args);
@@ -142,7 +178,13 @@ export class Agent {
   private positions: LiquidityPosition[] = [];
 
   constructor(quicknodeSubdomain: string, quicknodeApiKey: string) {
-    if (!process.env.OPENROUTER_API_KEY) {
+    console.error('🟢 [LIQUIDITY] Constructor called with params:', {
+      quicknodeSubdomain,
+      quicknodeApiKey,
+    });
+
+    if (!providers.openrouter) {
+      console.error('❌ [LIQUIDITY] OPENROUTER_API_KEY not set!');
       throw new Error('OPENROUTER_API_KEY not set!');
     }
     if (!quicknodeSubdomain) {
@@ -153,6 +195,12 @@ export class Agent {
     }
     this.quicknodeSubdomain = quicknodeSubdomain;
     this.quicknodeApiKey = quicknodeApiKey;
+
+    console.error(
+      '🟢 [LIQUIDITY] OPENROUTER_API_KEY present:',
+      process.env.OPENROUTER_API_KEY?.slice(0, 10)
+    );
+    console.error(`✅ [LIQUIDITY] Using model: ${selectedModel}`);
   }
 
   async log(...args: unknown[]) {
@@ -180,6 +228,34 @@ export class Agent {
   }
 
   async init() {
+    // Test the model with a simple call to validate API key and model access
+    console.error('🟢 [LIQUIDITY] Testing model with simple API call...');
+    try {
+      const testResult = await generateText({
+        model: model!,
+        prompt: 'Say hello',
+        maxTokens: 10,
+      });
+      console.error('✅ [LIQUIDITY] Model test successful:', testResult.text);
+    } catch (testError) {
+      console.error('❌ [LIQUIDITY] Model test failed:', {
+        name: testError instanceof Error ? testError.name : 'Unknown',
+        message: testError instanceof Error ? testError.message : String(testError),
+      });
+
+      // Try to provide more specific error information
+      if (testError instanceof Error && testError.message.includes('Not Found')) {
+        console.error('❌ [LIQUIDITY] API key appears to be invalid or model not accessible');
+        console.error('❌ [LIQUIDITY] Please check:');
+        console.error('❌ [LIQUIDITY] 1. OPENROUTER_API_KEY is set correctly');
+        console.error('❌ [LIQUIDITY] 2. API key has access to', selectedModel);
+        console.error('❌ [LIQUIDITY] 3. Account has sufficient credits/quota');
+      }
+
+      // Don't throw here, just warn - we'll handle the error when the model is actually used
+      console.error('⚠️ [LIQUIDITY] Warning: Model test failed, but continuing initialization...');
+    }
+
     this.conversationHistory = [
       {
         role: 'system',
@@ -348,8 +424,9 @@ Rules:
   }
 
   async start() {
+    console.error('🟢 [LIQUIDITY] Starting agent initialization...');
     await this.init();
-    this.log('Agent started.');
+    console.error('✅ [LIQUIDITY] Agent started successfully.');
   }
 
   async stop() {
@@ -365,25 +442,43 @@ Rules:
   }
 
   async processUserInput(userInput: string, userAddress: Address): Promise<Task> {
+    console.error('🟢 [LIQUIDITY] processUserInput called with:', { userInput, userAddress });
+
     if (!this.toolSet) {
+      console.error('❌ [LIQUIDITY] Agent not initialized - toolSet is null');
       throw new Error('Agent not initialized. Call start() first.');
     }
+    console.error('✅ [LIQUIDITY] ToolSet available:', Object.keys(this.toolSet));
+
     this.userAddress = userAddress;
     const userMessage: CoreUserMessage = { role: 'user', content: userInput };
     this.conversationHistory.push(userMessage);
+    console.error('🟢 [LIQUIDITY] Added user message to conversation history');
 
     try {
-      this.log('Calling generateText with Vercel AI SDK...');
+      this.log('🟢 [LIQUIDITY] Calling generateText with Vercel AI SDK...');
+      console.error('🟢 [LIQUIDITY] About to call generateText with params:', {
+        model: selectedModel,
+        messagesCount: this.conversationHistory.length,
+        toolsCount: Object.keys(this.toolSet).length,
+        maxSteps: 10,
+        apiKeyPresent: !!process.env.OPENROUTER_API_KEY,
+      });
+
       const { response, text, finishReason } = await generateText({
-        model: openrouter('meta-llama/llama-4-maverick:free'),
+        model: model!,
         messages: this.conversationHistory,
         tools: this.toolSet,
         maxSteps: 10,
         onStepFinish: async (stepResult: StepResult<typeof this.toolSet>) => {
-          this.log(`Step finished. Reason: ${stepResult.finishReason}`);
+          console.error(`🟢 [LIQUIDITY] Step finished. Reason: ${stepResult.finishReason}`);
         },
       });
-      this.log(`generateText finished. Reason: ${finishReason}`);
+      console.error(`✅ [LIQUIDITY] generateText finished. Reason: ${finishReason}`);
+      console.error(
+        `🟢 [LIQUIDITY] Text response: ${text ? text.substring(0, 200) + '...' : 'undefined/empty'}`
+      );
+      console.error(`🟢 [LIQUIDITY] Response messages count: ${response.messages.length}`);
 
       response.messages.forEach((msg, index) => {
         if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -472,7 +567,46 @@ Rules:
         }
       }
 
-      if (text) {
+      // Check if there's a final assistant message with text content
+      const finalAssistantMessage = response.messages
+        .slice()
+        .reverse()
+        .find(msg => msg.role === 'assistant');
+
+      console.error(`🟢 [LIQUIDITY] Final assistant message found: ${!!finalAssistantMessage}`);
+      if (finalAssistantMessage) {
+        console.error(
+          `🟢 [LIQUIDITY] Final assistant message content type: ${typeof finalAssistantMessage.content}`
+        );
+        if (Array.isArray(finalAssistantMessage.content)) {
+          console.error(
+            `🟢 [LIQUIDITY] Final assistant message content parts: ${finalAssistantMessage.content.length}`
+          );
+          finalAssistantMessage.content.forEach((part, i) => {
+            console.error(
+              `🟢 [LIQUIDITY] Part ${i}: type=${part.type}, text=${part.type === 'text' ? part.text?.substring(0, 100) + '...' : 'N/A'}`
+            );
+          });
+        }
+      }
+
+      let finalTextResponse = text;
+
+      // If no text from generateText, try to extract from final assistant message
+      if (!finalTextResponse && finalAssistantMessage) {
+        if (typeof finalAssistantMessage.content === 'string') {
+          finalTextResponse = finalAssistantMessage.content;
+        } else if (Array.isArray(finalAssistantMessage.content)) {
+          const textPart = finalAssistantMessage.content.find(part => part.type === 'text');
+          finalTextResponse = textPart?.text || '';
+        }
+      }
+
+      console.error(
+        `🟢 [LIQUIDITY] Final text response: ${finalTextResponse ? finalTextResponse.substring(0, 200) + '...' : 'undefined/empty'}`
+      );
+
+      if (finalTextResponse) {
         this.log(
           'No specific tool task processed or returned. Returning final text response as completed task.'
         );
@@ -480,7 +614,7 @@ Rules:
           id: this.userAddress,
           status: {
             state: 'completed',
-            message: { role: 'agent', parts: [{ type: 'text', text: text }] },
+            message: { role: 'agent', parts: [{ type: 'text', text: finalTextResponse }] },
           },
         };
       }
@@ -489,6 +623,26 @@ Rules:
         'Agent processing failed: No tool result task processed and no final text response available.'
       );
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorName = error instanceof Error ? error.name : 'Unknown error type';
+
+      console.error('❌ [LIQUIDITY] Error calling Vercel AI SDK generateText:', {
+        name: errorName,
+        message: errorMessage,
+        userInput: userInput,
+        userAddress: this.userAddress,
+      });
+
+      // If it's an AI_APICallError, log model info
+      if (errorName === 'AI_APICallError') {
+        console.error('❌ [LIQUIDITY] AI API call failed. Model info:', {
+          model: selectedModel || 'meta-llama/llama-4-maverick:free',
+          provider: 'OpenRouter',
+          apiKeyPresent: !!process.env.OPENROUTER_API_KEY,
+          errorDetails: errorMessage,
+        });
+      }
+
       const errorLog = `Error calling Vercel AI SDK generateText: ${error}`;
       logError(errorLog);
       const errorAssistantMessage: CoreAssistantMessage = {

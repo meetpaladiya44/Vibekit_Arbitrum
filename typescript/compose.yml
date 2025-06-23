@@ -55,19 +55,19 @@ services:
   #     - 3008:3008
   #   restart: unless-stopped
 
-  # liquidity-agent-no-wallet:
-  #   build:
-  #     context: ./
-  #     dockerfile: examples/liquidity-agent-no-wallet/Dockerfile
-  #   container_name: vibekit-liquidity-agent-no-wallet
-  #   env_file:
-  #     - path: .env
-  #       required: true
-  #     - path: examples/liquidity-agent-no-wallet/.env
-  #       required: false
-  #   ports:
-  #     - 3002:3002
-  #   restart: unless-stopped
+  liquidity-agent-no-wallet:
+    build:
+      context: ./
+      dockerfile: examples/liquidity-agent-no-wallet/Dockerfile
+    container_name: vibekit-liquidity-agent-no-wallet
+    env_file:
+      - path: .env
+        required: true
+      - path: examples/liquidity-agent-no-wallet/.env
+        required: false
+    ports:
+      - 3002:3002
+    restart: unless-stopped
 
   # pendle-agent:
   #   build:
